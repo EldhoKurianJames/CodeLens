@@ -73,14 +73,27 @@ def _fibonacci_memo_trace(n: int = 40) -> list[int]:
     return [i * ELEMENT_SIZE for i in range(n)]
 
 
-def _fibonacci_naive_trace(n: int = 35) -> list[int]:
+def _fibonacci_naive_trace(n: int = 24, max_records: int = 200_000) -> list[int]:
     """
     Naive recursive fibonacci.  Access pattern approximated as the
     sequence of dp indices visited in a DFS call tree.
+
+    The call count for this exact double-recursion grows as ~2*fib(n+1)-1,
+    NOT fib(n) — n=35 (the original default) generates ~29.86 MILLION
+    calls/appends, building two ~250 MB Python lists at import time (this
+    function runs eagerly via build_gallery() -> GALLERY at module import,
+    before the app ever starts serving requests). That transient spike was
+    enough to get the whole process OOM-killed on memory-capped hosts
+    (e.g. Render's 512Mi tier) before it could bind to a port. n=24 still
+    demonstrates the same exponential-blowup pattern for the demo while
+    keeping the trace under a quarter million entries; max_records is a
+    hard cap kept as defense in depth regardless of n.
     """
     indices: list[int] = []
 
     def _fib(k: int) -> None:
+        if len(indices) >= max_records:
+            return
         if k <= 1:
             indices.append(k)
             return
