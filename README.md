@@ -55,10 +55,14 @@ Environment variables read by `docker-compose.yml` (export them in your shell, o
 
 ```powershell
 cd backend
-pip install -r requirements.txt
+pip install -r requirements-dev.txt   # installs requirements.txt + pytest/httpx/ruff for local dev
 cp ../.env.example .env   # fill in ANTHROPIC_API_KEY / API_KEY / etc., or export them directly
 python -m uvicorn main:app --port 8000 --host 127.0.0.1
 ```
+
+> `requirements.txt` is intentionally minimal (production runtime only) to keep the deployed
+> container's memory footprint small on memory-capped hosts (e.g. Render's 512Mi free/starter
+> tier) — use `requirements-dev.txt` locally and in CI for testing/linting.
 
 > **Windows note:** do NOT use `--reload` — it spawns a subprocess blocked by Windows Application
 > Control policy in some locked-down environments.

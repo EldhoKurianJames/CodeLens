@@ -1,0 +1,6 @@
+# Test/lint-only dependencies. NOT installed in the production Docker image
+# or on the deployed Render service — only needed locally and in CI.
+-r requirements.txt
+pytest>=8.3.0
+httpx>=0.28.0
+ruff
