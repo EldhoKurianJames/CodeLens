@@ -9,10 +9,9 @@ Tests are split into two groups:
      response so you can evaluate explanation quality.
 """
 
+import json
 import os
 import sys
-import hashlib
-import json
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 

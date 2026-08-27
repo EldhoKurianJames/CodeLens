@@ -4,6 +4,11 @@
 .env.*.local
 *.env
 
+# Stray log files that have accidentally been committed before — explicit
+# filenames only, NOT a broad *.txt glob (would also hide requirements.txt /
+# runtime.txt).
+backend/uvicorn_out.txt
+
 # Python
 __pycache__/
 *.py[cod]

@@ -28,12 +28,11 @@ Test classes
        and col-major produced sequential addresses and identical ~99.9 % hit rates.
 """
 
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import pytest
 from cache_simulator import CacheSimulator
 from code_analyzer import analyze_code, extract_static_pattern
 

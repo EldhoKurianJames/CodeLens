@@ -12,8 +12,7 @@ LRU is maintained per set via an OrderedDict (oldest at front, newest at end).
 from __future__ import annotations
 
 from collections import OrderedDict
-from dataclasses import dataclass, field
-from typing import List
+from dataclasses import dataclass
 
 
 @dataclass
@@ -31,6 +30,7 @@ class CacheSimulator:
         cache_size_bytes: int = 512,
         block_size_bytes: int = 64,
         associativity: int = 2,
+        max_log_records: int | None = None,
     ) -> None:
         if cache_size_bytes <= 0 or block_size_bytes <= 0 or associativity <= 0:
             raise ValueError("All cache parameters must be positive integers.")
@@ -44,13 +44,20 @@ class CacheSimulator:
         self.associativity = associativity
         self.num_sets: int = cache_size_bytes // (block_size_bytes * associativity)
 
-        self._sets: List[OrderedDict[int, None]] = [
+        # Optional cap on how many AccessRecord objects we retain. Hit/miss
+        # counters keep incrementing regardless — this only bounds memory
+        # used by the (potentially huge) access_log, since API responses
+        # only ever serialise a small prefix of it anyway (see
+        # access_log_as_dicts). None means unbounded (legacy behaviour).
+        self.max_log_records = max_log_records
+
+        self._sets: list[OrderedDict[int, None]] = [
             OrderedDict() for _ in range(self.num_sets)
         ]
 
         self.hits: int = 0
         self.misses: int = 0
-        self.access_log: List[AccessRecord] = []
+        self.access_log: list[AccessRecord] = []
 
     # ------------------------------------------------------------------
     # Core operation
@@ -75,22 +82,23 @@ class CacheSimulator:
                 cache_set.popitem(last=False)
             cache_set[tag] = None
 
-        self.access_log.append(
-            AccessRecord(
-                address=address,
-                block_address=block_address,
-                set_index=set_index,
-                tag=tag,
-                hit=hit,
+        if self.max_log_records is None or len(self.access_log) < self.max_log_records:
+            self.access_log.append(
+                AccessRecord(
+                    address=address,
+                    block_address=block_address,
+                    set_index=set_index,
+                    tag=tag,
+                    hit=hit,
+                )
             )
-        )
         return hit
 
     # ------------------------------------------------------------------
     # Bulk helpers
     # ------------------------------------------------------------------
 
-    def access_many(self, addresses: List[int]) -> None:
+    def access_many(self, addresses: list[int]) -> None:
         """Simulate a sequence of memory accesses."""
         for addr in addresses:
             self.access(addr)
@@ -135,7 +143,7 @@ class CacheSimulator:
     # Access-log serialisation (for API / heatmap)
     # ------------------------------------------------------------------
 
-    def access_log_as_dicts(self, max_records: int = 4096) -> List[dict]:
+    def access_log_as_dicts(self, max_records: int = 4096) -> list[dict]:
         """Return access log as plain dicts, capped at max_records."""
         records = self.access_log[:max_records]
         return [

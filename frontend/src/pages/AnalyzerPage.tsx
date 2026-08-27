@@ -50,7 +50,7 @@ interface VariantResult {
   aiLoading: boolean
 }
 
-function ResultsColumn({ vr, config }: { vr: VariantResult; config: CacheConfig }) {
+function ResultsColumn({ vr }: { vr: VariantResult; config: CacheConfig }) {
   if (!vr.result) return null
   const { result } = vr
   return (

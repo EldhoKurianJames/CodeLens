@@ -1,0 +1,24 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      # Copy backend/.env.example -> backend/.env and fill in real values,
+      # or set these directly in your shell / deployment platform.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      API_KEY: ${API_KEY:-}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173}
+      TRUSTED_PROXY: ${TRUSTED_PROXY:-false}
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+        VITE_API_KEY: ${VITE_API_KEY:-}
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend

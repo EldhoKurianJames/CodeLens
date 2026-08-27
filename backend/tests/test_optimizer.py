@@ -8,12 +8,11 @@ Key case: column-major traversal of a 512x512 matrix. The optimizer must:
      (expected: ~0% -> ~93.75% with the default 512B/64B/2-way cache).
 """
 
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import pytest
 from code_optimizer import (
     NO_PATTERN_MESSAGE,
     detect_loop_interchange,

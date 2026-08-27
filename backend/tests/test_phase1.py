@@ -28,8 +28,8 @@ Strided 1D, stride = 16 (= 1 full block):
   Expected hit rate ≈ 0 %
 """
 
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -40,7 +40,6 @@ from code_analyzer import (
     CodeValidationError,
     analyze_code,
     extract_static_pattern,
-    generate_trace_from_pattern,
     validate_code,
 )
 

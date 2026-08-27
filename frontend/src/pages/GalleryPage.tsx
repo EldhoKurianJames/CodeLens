@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Cpu, ArrowRight, Zap, GitCompare, Loader2, AlertCircle } from 'lucide-react'
+import { Cpu, ArrowRight, GitCompare, Loader2, AlertCircle } from 'lucide-react'
 import { fetchGallery } from '../api'
 import type { GalleryItem } from '../types'
 

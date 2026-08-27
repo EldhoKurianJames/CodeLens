@@ -1,14 +1,31 @@
+"""
+Manual smoke-check script — NOT part of the automated pytest suite
+(excluded via pytest.ini) because it makes real HTTP calls against a
+locally running server at import time. Run it directly:
+
+    python tests/smoke_test.py
+
+If the server was started with API_KEY set, export the same value as
+API_KEY in this shell first so the requests below are authenticated.
+"""
+
+import os
+
 import httpx, json
 
 BASE = "http://127.0.0.1:8000"
+HEADERS = {}
+if os.environ.get("API_KEY", "").strip():
+    HEADERS["X-API-Key"] = os.environ["API_KEY"]
 
 def post(code, label):
     r = httpx.post(
-        f"{BASE}/api/analyze",
+        f"{BASE}/api/v1/analyze",
         json={
             "code": code,
             "cache_config": {"size_bytes": 512, "block_size_bytes": 64, "associativity": 2},
         },
+        headers=HEADERS,
         timeout=10,
     )
     d = r.json()
@@ -35,15 +52,16 @@ post(
 )
 
 r_bad = httpx.post(
-    f"{BASE}/api/analyze",
+    f"{BASE}/api/v1/analyze",
     json={"code": "import os\nprint(os.getcwd())", "cache_config": {"size_bytes": 512, "block_size_bytes": 64, "associativity": 2}},
+    headers=HEADERS,
     timeout=10,
 )
 print(f"--- invalid code [{r_bad.status_code}] ---")
 print(json.dumps(r_bad.json(), indent=2))
 print()
 
-r_gallery = httpx.get(f"{BASE}/api/gallery", timeout=10)
+r_gallery = httpx.get(f"{BASE}/api/v1/gallery", headers=HEADERS, timeout=10)
 gallery = r_gallery.json()
 print(f"--- gallery [{r_gallery.status_code}] --- {len(gallery)} entries")
 for entry in gallery:

@@ -55,10 +55,10 @@ export default function CacheConfigPanel({ config, onChange, disabled }: Props) 
       <div className="text-[11px] font-mono">
         {valid ? (
           <span className="text-[#484f58]">
-            {sets} sets · {config.associativity} ways · {config.block_size_bytes} B/block
+            {sets} sets · {config.associativity} ways · {config.block_size_bytes} B/block
           </span>
         ) : (
-          <span className="text-red-400/80">Invalid — size must be divisible by {config.block_size_bytes * config.associativity} B</span>
+          <span className="text-red-400/80">Invalid — size must be divisible by {config.block_size_bytes * config.associativity} B</span>
         )}
       </div>
     </div>

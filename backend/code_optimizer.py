@@ -33,7 +33,6 @@ from __future__ import annotations
 import ast
 import copy
 from dataclasses import dataclass
-from typing import Optional
 
 from code_analyzer import analyze_code
 
@@ -74,30 +73,30 @@ def _range_args_reference(node: ast.Call, var_name: str) -> bool:
 
 def _find_bad_2d_access(
     body: list[ast.stmt], row_var: str, col_var: str
-) -> Optional[str]:
+) -> str | None:
     """
     Search statements for a 2-level subscript  arr[row_var][col_var].
     Returns the array name if found, else None.
     """
-    module = ast.Module(body=body, type_ignores=[])
-    for node in ast.walk(module):
-        if not isinstance(node, ast.Subscript):
-            continue
-        if not isinstance(node.value, ast.Subscript):
-            continue
-        arr_node = node.value.value
-        row_idx = node.value.slice
-        col_idx = node.slice
-        if not isinstance(arr_node, ast.Name):
-            continue
-        if not (isinstance(row_idx, ast.Name) and isinstance(col_idx, ast.Name)):
-            continue
-        if row_idx.id == row_var and col_idx.id == col_var:
-            return arr_node.id
+    for stmt in body:
+        for node in ast.walk(stmt):
+            if not isinstance(node, ast.Subscript):
+                continue
+            if not isinstance(node.value, ast.Subscript):
+                continue
+            arr_node = node.value.value
+            row_idx = node.value.slice
+            col_idx = node.slice
+            if not isinstance(arr_node, ast.Name):
+                continue
+            if not (isinstance(row_idx, ast.Name) and isinstance(col_idx, ast.Name)):
+                continue
+            if row_idx.id == row_var and col_idx.id == col_var:
+                return arr_node.id
     return None
 
 
-def detect_loop_interchange(code: str) -> Optional[InterchangeCandidate]:
+def detect_loop_interchange(code: str) -> InterchangeCandidate | None:
     """
     Detect the column-major-inside-row-major-loop antipattern:
     outer loop var used as the SECOND (column) index, inner loop var used as
@@ -157,15 +156,15 @@ def detect_loop_interchange(code: str) -> Optional[InterchangeCandidate]:
 
 def _apply_interchange(
     code: str, outer_lineno: int, inner_lineno: int
-) -> Optional[str]:
+) -> str | None:
     """
     Re-parse the code, locate the two For nodes by line number, and swap their
     loop headers (target + iter) in-place. Everything else — the body, other
     statements, ordering — stays identical. Returns the unparsed source.
     """
     tree = ast.parse(code)
-    outer_node: Optional[ast.For] = None
-    inner_node: Optional[ast.For] = None
+    outer_node: ast.For | None = None
+    inner_node: ast.For | None = None
 
     for node in ast.walk(tree):
         if isinstance(node, ast.For):

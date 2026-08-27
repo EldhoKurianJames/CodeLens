@@ -11,7 +11,20 @@ Security layers applied here (after AST validation already passed in the parent)
   2. _TL wrapper injected so every list subscript is logged
   3. AST transformer replaces list literals & list-comps with _TL(...)
   4. subprocess.run(timeout=3) in parent kills us if we hang
-  5. On POSIX: RLIMIT_AS caps memory to 128 MB
+  5. On POSIX: RLIMIT_AS caps memory to 128 MB, RLIMIT_CPU caps CPU time to
+     2 seconds so a `while True: pass` is killed by the OS almost
+     immediately instead of running for the full 3-second wall-clock
+     subprocess timeout.
+  6. Cross-platform (Windows-safe) defense in depth: every `while` loop's
+     condition check is instrumented (same ast.NodeTransformer pattern used
+     for _TL) to increment a global counter, and a RuntimeError is raised
+     once it crosses ITERATION_LIMIT. RLIMIT_CPU is POSIX-only, so this is
+     the only hard stop against infinite loops on Windows; it is applied
+     unconditionally on every platform as a second line of defense even
+     where RLIMIT_CPU is available (e.g. a loop that is CPU-cheap per
+     iteration but never terminates due to a logic bug that isn't a tight
+     spin — RLIMIT_CPU would still catch it, but the counter catches it
+     deterministically regardless of CPU speed).
 """
 
 from __future__ import annotations
@@ -19,16 +32,24 @@ from __future__ import annotations
 import ast
 import json
 import sys
-import types
 
-# ── POSIX memory limit (no-op on Windows) ────────────────────────────────────
+# ── POSIX resource limits (no-op on Windows) ─────────────────────────────────
 try:
     import resource  # type: ignore
 
     _128MB = 128 * 1024 * 1024
     resource.setrlimit(resource.RLIMIT_AS, (_128MB, _128MB))
+
+    # Hard CPU-time cap: 2 seconds. Catches tight infinite loops (e.g.
+    # `while True: pass`) almost instantly instead of waiting for the
+    # parent's 3-second wall-clock subprocess timeout to kill us.
+    resource.setrlimit(resource.RLIMIT_CPU, (2, 2))
 except (ImportError, AttributeError, ValueError):
     pass
+
+# ── Cross-platform iteration cap (defense in depth, see module docstring) ────
+ITERATION_LIMIT = 500_000
+_iteration_counter = [0]
 
 # ── Access log shared state ───────────────────────────────────────────────────
 _access_log: list[tuple] = []
@@ -48,10 +69,10 @@ class _TL(list):
                 processed.append(item)
         super().__init__(processed)
 
-    def __mul__(self, n: int) -> "_TL":
+    def __mul__(self, n: int) -> _TL:
         return _TL(list.__mul__(list(self), n), _depth=self._depth)
 
-    def __rmul__(self, n: int) -> "_TL":
+    def __rmul__(self, n: int) -> _TL:
         return self.__mul__(n)
 
     def __getitem__(self, idx):
@@ -66,7 +87,23 @@ class _TL(list):
         list.__setitem__(self, idx, val)
 
 
-# ── AST transformer: wrap List / ListComp nodes with _TL(...) ─────────────────
+def _tick_iteration_limit() -> bool:
+    """
+    Called once per `while` condition evaluation (injected by _ListWrapper).
+    Raises once the global iteration count crosses ITERATION_LIMIT — the
+    Windows-safe, platform-independent backstop against infinite loops
+    described in the module docstring.
+    """
+    _iteration_counter[0] += 1
+    if _iteration_counter[0] > ITERATION_LIMIT:
+        raise RuntimeError(
+            f"Iteration limit exceeded ({ITERATION_LIMIT:,} while-condition "
+            "checks) — likely an infinite loop."
+        )
+    return True
+
+
+# ── AST transformer: wrap List / ListComp nodes with _TL(...); guard while ──
 
 
 class _ListWrapper(ast.NodeTransformer):
@@ -85,6 +122,20 @@ class _ListWrapper(ast.NodeTransformer):
             args=[node],
             keywords=[],
         )
+
+    def visit_While(self, node: ast.While) -> ast.While:
+        self.generic_visit(node)
+        # Rewrite `while <test>:` -> `while _TICK() and (<test>):` so every
+        # condition check is counted, regardless of platform.
+        guarded_test = ast.BoolOp(
+            op=ast.And(),
+            values=[
+                ast.Call(func=ast.Name(id="_TICK", ctx=ast.Load()), args=[], keywords=[]),
+                node.test,
+            ],
+        )
+        node.test = guarded_test
+        return node
 
 
 # ── Restricted builtins ───────────────────────────────────────────────────────
@@ -139,6 +190,7 @@ def _main() -> None:
     ns: dict = {
         "__builtins__": _SAFE_BUILTINS,
         "_TL": _TL,
+        "_TICK": _tick_iteration_limit,
         "_access_log": _access_log,
     }
 

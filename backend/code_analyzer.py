@@ -20,9 +20,7 @@ import json
 import os
 import subprocess
 import sys
-import tempfile
-from dataclasses import dataclass, field
-from typing import Any, Optional
+from dataclasses import dataclass
 
 from cache_simulator import CacheSimulator
 
@@ -187,18 +185,18 @@ class LoopInfo:
 @dataclass
 class StaticPattern:
     kind: str            # "nested_2d" | "flat_1d" | "complex"
-    outer: Optional[LoopInfo] = None
-    inner: Optional[LoopInfo] = None
+    outer: LoopInfo | None = None
+    inner: LoopInfo | None = None
     # For 2D: access indices into arr[outer_idx][inner_idx]
-    outer_access_var: Optional[str] = None
-    inner_access_var: Optional[str] = None
-    array_name: Optional[str] = None
+    outer_access_var: str | None = None
+    inner_access_var: str | None = None
+    array_name: str | None = None
     # For 1D strided
     stride: int = 1
     description: str = ""
 
 
-def _try_extract_int(node: ast.expr) -> Optional[int]:
+def _try_extract_int(node: ast.expr) -> int | None:
     """Return an integer constant from a simple AST expression, or None."""
     if isinstance(node, ast.Constant) and isinstance(node.value, int):
         return node.value
@@ -208,7 +206,7 @@ def _try_extract_int(node: ast.expr) -> Optional[int]:
     return None
 
 
-def _parse_range_call(node: ast.Call) -> Optional[LoopInfo]:
+def _parse_range_call(node: ast.Call) -> LoopInfo | None:
     """Extract (var_hint, start, stop, step) from range(...)."""
     if not (isinstance(node.func, ast.Name) and node.func.id == "range"):
         return None
@@ -222,7 +220,7 @@ def _parse_range_call(node: ast.Call) -> Optional[LoopInfo]:
     return None
 
 
-def _extract_subscript_vars(node: ast.expr) -> Optional[tuple[str, str]]:
+def _extract_subscript_vars(node: ast.expr) -> tuple[str, str] | None:
     """
     Given   arr[x][y]   return ("x", "y").
     Given   arr[x]      return ("x", None).
@@ -243,7 +241,19 @@ def _extract_subscript_vars(node: ast.expr) -> Optional[tuple[str, str]]:
     return None
 
 
-def _find_nested_loops(tree: ast.AST) -> Optional[StaticPattern]:
+def _walk_stmts(body: list[ast.stmt]):
+    """
+    Yield every node reachable from a list of statements, without wrapping
+    them in a throwaway ast.Module (which required a fresh construction +
+    full re-walk on every call site). Equivalent to
+    ast.walk(ast.Module(body=body, type_ignores=[])) minus the Module node
+    itself, which callers here never cared about anyway.
+    """
+    for stmt in body:
+        yield from ast.walk(stmt)
+
+
+def _find_nested_loops(tree: ast.AST) -> StaticPattern | None:
     """
     Detect the most common patterns:
       for i in range(N):
@@ -263,7 +273,7 @@ def _find_nested_loops(tree: ast.AST) -> Optional[StaticPattern]:
         outer_var = outer_for.target.id
         outer_loop.var = outer_var
 
-        for inner_for in ast.walk(ast.Module(body=outer_for.body, type_ignores=[])):
+        for inner_for in _walk_stmts(outer_for.body):
             if not isinstance(inner_for, ast.For):
                 continue
             if not isinstance(inner_for.iter, ast.Call):
@@ -277,7 +287,7 @@ def _find_nested_loops(tree: ast.AST) -> Optional[StaticPattern]:
             inner_loop.var = inner_var
 
             # Search for subscript accesses in inner loop body
-            for stmt in ast.walk(ast.Module(body=inner_for.body, type_ignores=[])):
+            for stmt in _walk_stmts(inner_for.body):
                 # Check Assign targets and value for subscripts
                 targets: list[ast.expr] = []
                 if isinstance(stmt, ast.Assign):
@@ -319,7 +329,7 @@ def _find_nested_loops(tree: ast.AST) -> Optional[StaticPattern]:
     return None
 
 
-def _find_flat_loop(tree: ast.AST) -> Optional[StaticPattern]:
+def _find_flat_loop(tree: ast.AST) -> StaticPattern | None:
     """Detect a simple flat loop:  for i in range(N, [M,] [step]):  arr[i]"""
     for for_node in ast.walk(tree):
         if not isinstance(for_node, ast.For):
@@ -334,7 +344,7 @@ def _find_flat_loop(tree: ast.AST) -> Optional[StaticPattern]:
         var = for_node.target.id
         loop.var = var
 
-        for stmt in ast.walk(ast.Module(body=for_node.body, type_ignores=[])):
+        for stmt in for_node.body:
             for candidate in ast.walk(stmt):
                 if not isinstance(candidate, ast.Subscript):
                     continue
@@ -379,7 +389,6 @@ def generate_trace_from_pattern(
         assert outer and inner
         num_rows = rows or min(len(outer.iterations), MAX_LOOP_ITERS)
         num_cols = cols or min(len(inner.iterations), MAX_LOOP_ITERS)
-        actual_cols = len(inner.iterations)  # true column count for address calc
 
         addresses: list[int] = []
         outer_range = range(min(len(outer.iterations), num_rows))
@@ -433,10 +442,10 @@ def run_sandboxed(code: str, timeout: float = 3.0) -> list[tuple]:
             text=True,
             timeout=timeout,
         )
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as exc:
         raise RuntimeError(
             f"Code execution timed out after {timeout:.0f} seconds."
-        )
+        ) from exc
     except Exception as exc:
         raise RuntimeError(f"Subprocess launch failed: {exc}") from exc
 
