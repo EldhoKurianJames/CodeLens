@@ -1,6 +1,6 @@
 import type { AnalysisResult, CacheConfig, GalleryItem } from './types'
 
-const BASE = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000'
+const BASE = import.meta.env.VITE_API_URL ?? 'https://codelens-2.onrender.com'
 const API_KEY = import.meta.env.VITE_API_KEY ?? ''
 
 // All /api/v1/* routes are protected by an X-API-Key header on the backend
