@@ -59,9 +59,18 @@ app = FastAPI(
 _allowed_origins_env = os.environ.get("ALLOWED_ORIGINS", "http://localhost:5173").strip()
 ALLOWED_ORIGINS = [o.strip() for o in _allowed_origins_env.split(",") if o.strip()]
 
+# Optional regex for origins that can't be listed as exact strings — e.g.
+# Vercel mints a unique "*-<hash>-<team>.vercel.app" URL for every single
+# deployment/preview, so exact-matching ALLOWED_ORIGINS alone would need to
+# be updated on every deploy. Set this to something like
+# https://code-lens.*\.vercel\.app to allow any deployment of your project.
+# Leave unset to only allow the exact origins in ALLOWED_ORIGINS.
+ALLOWED_ORIGIN_REGEX = os.environ.get("ALLOWED_ORIGIN_REGEX", "").strip() or None
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=ALLOWED_ORIGIN_REGEX,
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-API-Key"],
